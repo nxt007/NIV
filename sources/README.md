@@ -9,4 +9,5 @@ NIV.prj   - MATLAB project file
 NIV.mlapp - MATLAB main application source file
 
 com.m     - center of mass calculation function
+
 useviewneuron2.m - single neuron info display function
