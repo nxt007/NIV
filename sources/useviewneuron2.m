@@ -90,5 +90,5 @@ function Y = usereshape(sizes, Y, dim)
 end
 
 function center = useestCenter(data)
-    center = com(data.A, data.meta.image_width, data.meta.image_height);
+    center = center_of_mass(data.A, data.meta.image_width, data.meta.image_height);
 end

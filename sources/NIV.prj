@@ -1,21 +1,21 @@
 <deployment-project plugin="plugin.apptool" plugin-version="1.0">
-  <configuration build-checksum="1461148304" file="E:\Projects\NeuronInfoViewer\NeuronInfoViewer\NIV.prj" location="E:\Projects\NeuronInfoViewer\NeuronInfoViewer" name="NIV" target="target.mlapps" target-name="Package App">
+  <configuration build-checksum="353338602" file="E:\Projects\NeuronInfoViewer\NeuronInfoViewer\NIV.prj" location="E:\Projects\NeuronInfoViewer\NeuronInfoViewer" name="NIV" target="target.mlapps" target-name="Package App">
     <param.appname>NIV</param.appname>
-    <param.authnamewatermark>Dmitrii</param.authnamewatermark>
+    <param.authnamewatermark>Barinov Dmitriy</param.authnamewatermark>
     <param.email>barinovdmitrii@gmail.com</param.email>
     <param.company />
     <param.icon />
     <param.icons />
     <param.summary />
     <param.description>NeuronInfoViewer - MATLAB application for viewing and processing neurons activity data in csv  format.</param.description>
-    <param.screenshot>${PROJECT_ROOT}\resources\screenshot.png</param.screenshot>
-    <param.version>0.8.1</param.version>
+    <param.screenshot>C:\Users\Dmitrii\AppData\Local\Temp\tpe9d1568c_b3c6_4e00_9fbe_ef7035159b81.png</param.screenshot>
+    <param.version>0.8.2</param.version>
     <param.products.name />
     <param.products.id />
     <param.products.version />
     <param.platforms />
     <param.output>${PROJECT_ROOT}</param.output>
-    <param.guid>f2f3a5f5-9728-4064-82c7-b197dd6cca15</param.guid>
+    <param.guid>675468a5-3e0b-43cc-bddb-59366a61c6f1</param.guid>
     <unset>
       <param.authnamewatermark />
       <param.email />
@@ -30,10 +30,10 @@
       <param.output />
     </unset>
     <fileset.main>
-      <file>${PROJECT_ROOT}\myApp2.mlapp</file>
+      <file>${PROJECT_ROOT}\NIV.mlapp</file>
     </fileset.main>
     <fileset.depfun>
-      <file>${PROJECT_ROOT}\com.m</file>
+      <file>${PROJECT_ROOT}\center_of_mass.m</file>
       <file>${PROJECT_ROOT}\useviewneuron2.m</file>
     </fileset.depfun>
     <fileset.resources />

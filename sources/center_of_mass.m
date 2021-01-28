@@ -1,4 +1,4 @@
-function cm = com(A,d1,d2,d3)
+function cm = center_of_mass(A,d1,d2,d3)
 
 % center of mass calculation
 % inputs:
