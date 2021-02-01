@@ -1,5 +1,5 @@
 <deployment-project plugin="plugin.apptool" plugin-version="1.0">
-  <configuration build-checksum="353338602" file="E:\Projects\NeuronInfoViewer\NeuronInfoViewer\NIV.prj" location="E:\Projects\NeuronInfoViewer\NeuronInfoViewer" name="NIV" target="target.mlapps" target-name="Package App">
+  <configuration build-checksum="3058445872" file="E:\Projects\NEURO_SCOPE\NIV_repo\sources\NIV.prj" location="E:\Projects\NEURO_SCOPE\NIV_repo\sources" name="NIV" target="target.mlapps" target-name="Package App">
     <param.appname>NIV</param.appname>
     <param.authnamewatermark>Barinov Dmitriy</param.authnamewatermark>
     <param.email>barinovdmitrii@gmail.com</param.email>
@@ -8,8 +8,8 @@
     <param.icons />
     <param.summary />
     <param.description>NeuronInfoViewer - MATLAB application for viewing and processing neurons activity data in csv  format.</param.description>
-    <param.screenshot>C:\Users\Dmitrii\AppData\Local\Temp\tpe9d1568c_b3c6_4e00_9fbe_ef7035159b81.png</param.screenshot>
-    <param.version>0.8.2</param.version>
+    <param.screenshot>C:\Users\Dmitrii\AppData\Local\Temp\tp30658691_8da2_4b92_8085_c084be3d9db1.png</param.screenshot>
+    <param.version>0.8.3</param.version>
     <param.products.name />
     <param.products.id />
     <param.products.version />
@@ -39,7 +39,7 @@
     <fileset.resources />
     <fileset.package />
     <build-deliverables>
-      <file location="E:\Projects\NeuronInfoViewer" name="NeuronInfoViewer" optional="false">E:\Projects\NeuronInfoViewer\NeuronInfoViewer</file>
+      <file location="E:\Projects\NEURO_SCOPE\NIV_repo" name="sources" optional="false">E:\Projects\NEURO_SCOPE\NIV_repo\sources</file>
     </build-deliverables>
     <workflow />
     <matlab>

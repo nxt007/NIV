@@ -13,7 +13,7 @@ name_spike = saveCsv(neuron.S, [folder prefix '_spike.csv'], true);
 name_bg_image = saveCsv(neuron.Cn, [folder prefix '_bg_image.csv']);
 
 % spatial components of neurons
-name_A = saveCsv(neuron.A, [folder prefix '_A.csv']);
+name_A = saveCsv(neuron.A, [folder prefix '_A.csv'], true);
 
 % centers of neurons
 name_centers = [folder prefix '_centers.csv'];
@@ -29,8 +29,8 @@ fprintf(fileID, 'file_spike; %s\n',name_spike);
 fprintf(fileID, 'file_bg_image; %s\n',name_bg_image);
 fprintf(fileID, 'file_A; %s\n',name_A);
 fprintf(fileID, 'file_centers; %s\n',name_centers);
-fprintf(fileID, 'image_width;%d\n', neuron.options.d1);
-fprintf(fileID, 'image_height;%d\n', neuron.options.d2);
+fprintf(fileID, 'image_width;%d\n', neuron.options.d2);
+fprintf(fileID, 'image_height;%d\n', neuron.options.d1);
 fprintf(fileID, 'Fs;%d\n', Fs); % FPS
 fclose(fileID);
 

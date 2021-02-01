@@ -17,7 +17,7 @@ if ~isnan(data.meta.Fs)
 else
     str_xlabel = 'Frame';
 end
-sizes = [data.meta.image_width data.meta.image_height];
+sizes = [data.meta.image_height data.meta.image_width];
 figure('position', [100, 100, 1024, 512]);
 subplot(321); cla;
     useimage(sizes, data.A(:, ind(m)).*Amask(:, ind(m))); %
@@ -90,5 +90,5 @@ function Y = usereshape(sizes, Y, dim)
 end
 
 function center = useestCenter(data)
-    center = center_of_mass(data.A, data.meta.image_width, data.meta.image_height);
+    center = center_of_mass(data.A, data.meta.image_height, data.meta.image_width);
 end
