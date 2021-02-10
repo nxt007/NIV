@@ -1,0 +1,786 @@
+classdef NIV < matlab.apps.AppBase
+
+    % Properties that correspond to app components
+    properties (Access = public)
+        UIFigure                      matlab.ui.Figure
+        FileMenu                      matlab.ui.container.Menu
+        ImportcsvMenu                 matlab.ui.container.Menu
+        ExportMenu                    matlab.ui.container.Menu
+        GridLayout                    matlab.ui.container.GridLayout
+        GridLayout2                   matlab.ui.container.GridLayout
+        StartTimeSlider               matlab.ui.control.Slider
+        EndTimeSlider                 matlab.ui.control.Slider
+        StartframeLabel               matlab.ui.control.Label
+        StartFrameSpinner             matlab.ui.control.Spinner
+        EndframeLabel                 matlab.ui.control.Label
+        EndFrameSpinner               matlab.ui.control.Spinner
+        TimesecLabel                  matlab.ui.control.Label
+        TimesecLabel_2                matlab.ui.control.Label
+        UIAxesFramePos                matlab.ui.control.UIAxes
+        UIAxesHeatmap                 matlab.ui.control.UIAxes
+        GridLayout_heatmap_settings   matlab.ui.container.GridLayout
+        NICAlgorithmDropDownLabel     matlab.ui.control.Label
+        NICAlgorithmDropDown          matlab.ui.control.DropDown
+        ApplyButton_correlationAlg    matlab.ui.control.Button
+        GridLayout4                   matlab.ui.container.GridLayout
+        ShowneuroninfobyindexEditFieldLabel  matlab.ui.control.Label
+        Button_showNeuronInfo         matlab.ui.control.Button
+        ShowneuroninfoIndex           matlab.ui.control.NumericEditField
+        UIAxesCorrelation             matlab.ui.control.UIAxes
+        GridLayout6                   matlab.ui.container.GridLayout
+        NeuronsInteractivityCoefficientNICthresholdLabel  matlab.ui.control.Label
+        NICthresholdEditField         matlab.ui.control.NumericEditField
+        GridLayoutThresWarmCool       matlab.ui.container.GridLayout
+        ThresholdLabel                matlab.ui.control.Label
+        EditFieldThresWarmCool_thres  matlab.ui.control.NumericEditField
+        WarmupperiodsecLabel          matlab.ui.control.Label
+        EditFieldThresWarmCool_warm   matlab.ui.control.NumericEditField
+        CooldownperiodsecLabel        matlab.ui.control.Label
+        EditFieldThresWarmCool_cool   matlab.ui.control.NumericEditField
+    end
+
+    
+    properties (Access = private)
+%         ms = struct % Description
+      
+        rangeStart = 0    % First frames range
+        rangeEnd   = 0    % Last frames range
+        corrThres  = 0.75 %
+        corrAlg    = ''   % Description
+        framesN    = 0    % Description
+        
+        processParams = struct % Last processsing params (for export)
+        
+        dataLoaded = false
+        
+        data       = struct % data metadata and traces
+    end
+    
+    methods (Access = private)
+        
+        function DataUpdate(app)
+            app.UIAxesFramePos.cla()
+            
+            if ~app.dataLoaded
+                return
+            end
+                            
+            app.rangeStart = round(app.StartFrameSpinner.Value);
+            app.rangeEnd = round(app.EndFrameSpinner.Value);
+
+            hold(app.UIAxesFramePos,'on')
+            imagesc(app.UIAxesFramePos, app.data.bg_image);
+            
+            [numneuron,~]=size(app.data.centers);
+            neuronorder=1:numneuron;
+            
+            plot(app.UIAxesFramePos, app.data.centers(:, 2), app.data.centers(:, 1), '.r', 'markersize', 10);
+            for i=1:numneuron
+                text(app.UIAxesFramePos, app.data.centers(i, 2), app.data.centers(i, 1), num2str(neuronorder(i)));
+            end
+            hold(app.UIAxesFramePos,'off')
+            
+            %% make correlation
+            app.CalcCorrelation();
+            imagesc(app.UIAxesHeatmap, app.data.corrMatrixBin);
+            
+            n = size(app.data.c_raw, 1);
+            app.ShowneuroninfoIndex.Limits = [1, n];
+            
+            app.updateDistanceCorrImg()
+        end
+        
+        function ResetStartEndFramesLimits(app) 
+            startFrame = 1;
+            endFrame = app.framesN;
+            app.StartFrameSpinner.Limits = [startFrame, endFrame];
+            app.StartFrameSpinner.Value = startFrame;
+            app.EndFrameSpinner.Limits = [startFrame, endFrame];
+            app.EndFrameSpinner.Value = endFrame;
+            
+            startTime = 0; %ms
+            endTime = endFrame / app.data.meta.Fs; %ms
+            app.StartTimeSlider.Limits = [startTime, endTime];
+            app.StartTimeSlider.Value = startTime;
+            app.EndTimeSlider.Limits = [startTime, endTime];
+            app.EndTimeSlider.Value = endTime;
+        end
+        
+        function UpdateStartEndFramesLimits(app)
+            %%% Called when slider values changed
+            
+            startTime = app.StartTimeSlider.Value;
+            endTime = app.EndTimeSlider.Value;
+             
+            startFrame = max(1, round(app.data.meta.Fs * startTime));
+            endFrame   = min(app.framesN, round(app.data.meta.Fs * endTime));
+            app.StartFrameSpinner.Value = startFrame;
+            app.EndFrameSpinner.Value = endFrame;
+        end
+        
+        function UpdateStartEndTimesLimits(app)
+            %%% Called when spinners values changed
+            
+            startFrame = app.StartFrameSpinner.Value;
+            endFrame   = app.EndFrameSpinner.Value;
+            
+            startTime = startFrame / app.data.meta.Fs;
+            endTime   = endFrame   / app.data.meta.Fs;
+            app.StartTimeSlider.Value = startTime;
+            app.EndTimeSlider.Value = endTime;
+        end
+
+        function CalcCorrelation(app)
+            app.corrAlg = app.NICAlgorithmDropDown.Value;
+            
+            app.rangeStart = round(app.StartFrameSpinner.Value);
+            app.rangeEnd = round(app.EndFrameSpinner.Value);
+            if app.rangeStart == 0 || app.rangeEnd == 0 
+                error('Invalid ranges');
+            end
+            
+            if app.corrAlg == "Alg1"
+                app.CalcCorrelationAlg1();
+            elseif app.corrAlg == "ThresWarmCool"
+                app.CalcCorrelationThresWarmCool();
+            elseif app.corrAlg == "SignalCrossCorrMax"
+                app.CalcCorrelationSignalCrossCorrMax();
+            else
+                error('Invalid corr alg');
+            end
+        end
+        
+        function CalcCorrelationAlg1(app)
+            
+            n = size(app.data.c_raw, 1);
+            app.data.corrMatrixBin = zeros(n,n);
+            binSpikes = arrayfun(@(x) x > 0,app.data.spike);
+            for i=1:n
+                for j=1:n
+                    if i == j; continue; end
+                    
+                    sp1 = binSpikes(app.rangeStart:app.rangeEnd, i);
+                    sp2 = binSpikes(app.rangeStart:app.rangeEnd, j);
+                    sp1ActiveCount = sum(sp1(:) > 0);
+                    sp2ActiveCount = sum(sp2(:) > 0);
+                    count = 0.0;
+                    for k=1:size(sp1, 1)
+                        if sp1(k) > 0 && sp2(k) > 0
+                            count=count + 1;
+                        end
+                    end
+                    divisor = sp1ActiveCount + sp2ActiveCount - count;
+                    if (divisor > 0)
+                        app.data.corrMatrixBin(i, j) = count / divisor;
+                    else
+                        app.data.corrMatrixBin(i, j) = nan;
+                    end
+                end
+            end
+                     
+        end
+        
+        function CalcCorrelationThresWarmCool(app)                   
+            
+            warmUpPeriodF = app.EditFieldThresWarmCool_warm.Value * app.data.meta.Fs; % in frames
+            app.processParams.warmUpPeriodF = warmUpPeriodF;
+            
+            coolDownPeriodF = app.EditFieldThresWarmCool_cool.Value * app.data.meta.Fs; % in frames
+            app.processParams.coolDownPeriodF = coolDownPeriodF;
+            
+            app.data.c_raw2 = zeros(size(app.data.c_raw));
+            app.processParams.warmUpCoolDownThres = app.EditFieldThresWarmCool_thres.Value;
+            
+            
+            
+            for i=1:size(app.data.c_raw, 2)
+                trace = app.data.c_raw(:,i);
+                curr = 0;
+                lastActive = 0;
+                for j=1:size(trace,1)
+                    thres = app.processParams.warmUpCoolDownThres * mean(trace, 'all'); % in percent from mean value 
+                    if (trace(j) > thres)
+                        curr = curr + 1;
+                        lastActive = j;
+                    elseif (j - lastActive < coolDownPeriodF)
+                         %do nothing
+                    else
+                        curr = 0;
+                    end
+                        
+                    if curr > warmUpPeriodF 
+                        app.data.c_raw2(j, i) = app.data.c_raw(j, i); %ms.FiltTraces(j, i);
+                    end
+                end
+            end
+            
+            n = size(app.data.c_raw, 1);
+            app.data.corrMatrixBin = zeros(n, n);
+            binSpikes = arrayfun(@(x) x > 0, app.data.c_raw2);
+            for i=1:n
+                for j=1:n
+                    if i == j; continue; end
+                    
+                    sp1 = binSpikes(app.rangeStart:app.rangeEnd, i);
+                    sp2 = binSpikes(app.rangeStart:app.rangeEnd, j);
+                    r = xcorr(sp1, sp2);
+                    app.data.corrMatrixBin(i, j) = max(r);
+                end
+            end
+            
+%             Normalize matrix to 0..1
+            normA = app.data.corrMatrixBin - min(app.data.corrMatrixBin(:));
+            normA = normA ./ max(normA(:));
+            app.data.corrMatrixBin = normA;    
+        end
+        
+        function CalcCorrelationSignalCrossCorrMax(app)
+           
+            n = size(app.data.c_raw, 1);
+            app.data.corrMatrixBin = zeros(n, n);
+            binSpikes = arrayfun(@(x) x > 0, app.data.spike);
+            for i=1:n
+                for j=1:n
+                    if i == j; continue; end
+                    
+                    sp1 = binSpikes(app.rangeStart:app.rangeEnd, i);
+                    sp2 = binSpikes(app.rangeStart:app.rangeEnd, j);
+                    r = xcorr(sp1, sp2);
+                    app.data.corrMatrixBin(i, j) = max(r);
+                end
+            end
+            
+%             Normalize matrix to 0..1
+            normA = app.data.corrMatrixBin - min(app.data.corrMatrixBin(:));
+            normA = normA ./ max(normA(:));
+            app.data.corrMatrixBin = normA;
+        end
+        
+        function updateDistanceCorrImg(app)
+            thres = app.NICthresholdEditField.Value; % manually estimated for current experiment
+            app.corrThres = thres;
+            
+%             imgSize = max(ms.Centroids);
+%             img= 255 * ones(app.ms.width, app.ms.height, 3, 'uint8');
+                    
+            n = size(app.data.centers, 1);
+            shouldDraw = false(n, 1);
+            
+            app.UIAxesCorrelation.cla()
+            hold(app.UIAxesCorrelation,'on')
+            
+            function y = clamp(x,bl,bu)
+              % return bounded value clipped between bl and bu
+              y=min(max(x,bl),bu);
+            end
+            
+            for i=1:n
+                for j=i:n
+                    corr = app.data.corrMatrixBin(i, j);
+                    if ~isnan(corr) && corr > thres
+                        lineWidth = clamp((corr - thres) * 80, 0.5, 1);
+                        color = [1, 0, 0]; %[1-(corr - thres)*4, 0, (corr - thres)]
+                        line(app.UIAxesCorrelation, app.data.centers([i, j], 2), app.data.centers([i, j], 1), ...
+                        'Color', color, ...
+                        'LineWidth', lineWidth);
+                        shouldDraw(i) = true;
+                        shouldDraw(j) = true;
+                    end
+                end
+            end
+            legend(app.UIAxesCorrelation, sprintf('Corr thres %.3f', thres))
+            
+            plot(app.UIAxesCorrelation, app.data.centers(:, 2), app.data.centers(:, 1), '.r',...
+                'markersize', 10,...
+                'DisplayName','Neurons');
+            % plot(ms.Centroids(2, 2), ms.Centroids(2, 1), '.r', 'markersize', 10);
+            
+            
+            for i=1:n
+                if (shouldDraw(i))
+                    text(app.UIAxesCorrelation, app.data.centers(i, 2), app.data.centers(i, 1), num2str(i));
+                end
+            end
+            hold(app.UIAxesCorrelation,'off')
+            
+%             imagesc(app.UIAxesHeatmap, app.ms.corrMatrixBin);
+        end
+        
+        function saveFig(app, UIAxisToSave, path)
+            % Create a temporary figure with axes.
+            fig = figure;
+            fig.Visible = 'off';
+            figAxes = axes(fig);
+            % Copy all UIAxes children, take over axes limits and aspect ratio.            
+            allChildren = UIAxisToSave.XAxis.Parent.Children;
+            copyobj(allChildren, figAxes)
+            figAxes.XLim = UIAxisToSave.XLim;
+            figAxes.YLim = UIAxisToSave.YLim;
+            figAxes.ZLim = UIAxisToSave.ZLim;
+            figAxes.DataAspectRatio = UIAxisToSave.DataAspectRatio;
+            % Save as png and fig files.
+            saveas(fig, path, 'png');
+            savefig(fig, path);
+            % Delete the temporary figure.
+            delete(fig);
+        end
+        
+        function y = bound(~, x, range)
+            % return bounded value clipped between bl and bu
+            y=min(max(x,range(1)),range(2));
+        end
+    end
+
+
+    % Callbacks that handle component events
+    methods (Access = private)
+
+        % Code that executes after component creation
+        function startupFcn(app)
+%            app.UIAxesFramePos.ButtonDownFcn = createCallbackFcn(app, @SomeFoo, true);
+        end
+
+        % Button pushed function: ApplyButton_correlationAlg
+        function ApplyButton_correlationAlgPushed(app, event)
+            app.DataUpdate()
+        end
+
+        % Button pushed function: Button_showNeuronInfo
+        function Button_showNeuronInfoPushed(app, event)
+            if ~app.dataLoaded
+                msgbox('Load any data first');
+                return
+            end
+            index = round(app.ShowneuroninfoIndex.Value);
+            useviewneuron2(app.data, index);
+        end
+
+        % Menu selected function: ExportMenu
+        function ExportMenuSelected(app, event)
+            selpath = uigetdir('.\', 'Select folder for data to export...');
+            
+            % exporting images
+            app.saveFig(app.UIAxesFramePos, [selpath '\framePos']);
+            app.saveFig(app.UIAxesHeatmap, [selpath '\heatmap']);
+            app.saveFig(app.UIAxesCorrelation, [selpath '\correlation']);
+            
+            
+            
+            metaDataFile = fopen([selpath '\metadata.txt'],'w');
+%             fprintf(metaDataFile, 'Filename: %s',);
+            fprintf(metaDataFile, 'Corr alg: %s\n', app.corrAlg);
+            fprintf(metaDataFile, 'Corr threshold: %f\n', app.corrThres);
+            fprintf(metaDataFile, 'Frames range start: %d\nFrames range end: %d\n',...
+                app.rangeStart, app.rangeEnd);
+            
+            if app.corrAlg == "ThresWarmCool"
+                %  save thres warm params
+                fprintf(metaDataFile, 'ThresWarmCool: threshold: %f\n', app.processParams.warmUpCoolDownThres);
+                fprintf(metaDataFile, 'ThresWarmCool: warm_up: %f (video frames)\n', app.processParams.warmUpPeriodF);
+                fprintf(metaDataFile, 'ThresWarmCool: cool_down: %f (video frames)\n', app.processParams.coolDownPeriodF);
+            end
+            fclose(metaDataFile);
+            
+            csvwrite([selpath '\binCorrelation.csv'], app.data.corrMatrixBin)
+            
+        end
+
+        % Value changed function: NICthresholdEditField
+        function NICthresholdEditFieldValueChanged(app, event)
+            value = app.NICthresholdEditField.Value;
+            app.updateDistanceCorrImg();
+        end
+
+        % Value changed function: StartTimeSlider
+        function StartTimeSliderValueChanged(app, event)
+            v1 = app.StartTimeSlider.Value;
+            v2 = app.EndTimeSlider.Value;
+            
+            if v1 >= v2
+                app.StartTimeSlider.Value = app.bound(v2 - 1 / app.data.meta.Fs, app.StartTimeSlider.Limits);
+            end
+            
+            app.UpdateStartEndFramesLimits();
+        end
+
+        % Value changed function: EndTimeSlider
+        function EndTimeSliderValueChanged(app, event)
+            v1 = app.StartTimeSlider.Value;
+            v2 = app.EndTimeSlider.Value;
+            
+            if v2 <= v1
+                app.EndTimeSlider.Value = app.bound(v1 + 1 / app.data.meta.Fs, app.EndTimeSlider.Limits);
+            end
+            app.UpdateStartEndFramesLimits();
+        end
+
+        % Value changed function: NICAlgorithmDropDown
+        function NICAlgorithmDropDownValueChanged(app, event)
+            value = app.NICAlgorithmDropDown.Value;
+            if (value == "ThresWarmCool")
+                app.GridLayoutThresWarmCool.Visible = true;
+            else
+                app.GridLayoutThresWarmCool.Visible = false;
+            end
+        end
+
+        % Menu selected function: ImportcsvMenu
+        function ImportcsvMenuSelected(app, event)
+            [file, path] = uigetfile('*_meta.csv');
+            if (file == 0); return; end
+            C = readcell([path file]); 
+            app.data.meta = cell2struct(C(:,2),C(:,1),1);
+            
+            function mat = loadCsvSp(filename)
+                [~,~,ext] = fileparts(filename);
+                if strcmp(ext, '.csv') 
+                    mat = readmatrix(filename);
+                elseif strcmp(ext, '.csv_sp') 
+                    tmp = readmatrix(filename, 'FileType', 'text');
+                    mat = full(spconvert(tmp));
+                else
+                    error('Unknown format');
+                end
+            end
+            
+            if app.data.meta.version == 1 || app.data.meta.version == 1.1
+                app.data.c_raw = loadCsvSp([ path app.data.meta.file_c_raw ]);
+                app.data.spike = loadCsvSp([ path app.data.meta.file_spike ]);
+                app.data.bg_image = loadCsvSp([ path app.data.meta.file_bg_image ]);
+                x = app.data.meta.image_width * app.data.meta.image_height;
+                y = size(app.data.c_raw, 1);
+                app.data.A = zeros([x y]);
+                if app.data.meta.version == 1.1
+                    t = loadCsvSp([ path app.data.meta.file_A ]);
+                    tsize = size(t);
+                    app.data.A(1:tsize(1), 1:tsize(2)) = t;
+                end
+                app.data.centers = loadCsvSp([ path app.data.meta.file_centers ]);
+                
+                app.framesN = size(app.data.c_raw, 1);
+                app.dataLoaded = true;
+
+                app.ResetStartEndFramesLimits();
+                app.DataUpdate();
+                
+            else
+                warning('Unknown format version %d', app.data.meta.version)
+                app.dataLoaded = false;
+            end
+            
+        end
+
+        % Value changed function: StartFrameSpinner
+        function StartFrameSpinnerValueChanged(app, event)
+            v1 = app.StartFrameSpinner.Value;
+            v2 = app.EndFrameSpinner.Value;
+            
+            if v1 >= v2
+                app.StartFrameSpinner.Value = app.bound(v2 - 1, app.StartFrameSpinner.Limits);
+            end
+            
+            app.UpdateStartEndTimesLimits();
+        end
+
+        % Value changed function: EndFrameSpinner
+        function EndFrameSpinnerValueChanged(app, event)
+            v1 = app.StartFrameSpinner.Value;
+            v2 = app.EndFrameSpinner.Value;
+            
+            if v2 <= v1
+                app.EndFrameSpinner.Value = app.bound(v2 + 1, app.EndFrameSpinner.Limits);
+            end
+            
+            app.UpdateStartEndTimesLimits();
+        end
+    end
+
+    % Component initialization
+    methods (Access = private)
+
+        % Create UIFigure and components
+        function createComponents(app)
+
+            % Create UIFigure and hide until all components are created
+            app.UIFigure = uifigure('Visible', 'off');
+            app.UIFigure.Position = [100 100 1134 715];
+            app.UIFigure.Name = 'UI Figure';
+
+            % Create FileMenu
+            app.FileMenu = uimenu(app.UIFigure);
+            app.FileMenu.Text = 'File';
+
+            % Create ImportcsvMenu
+            app.ImportcsvMenu = uimenu(app.FileMenu);
+            app.ImportcsvMenu.MenuSelectedFcn = createCallbackFcn(app, @ImportcsvMenuSelected, true);
+            app.ImportcsvMenu.Text = 'Import csv...';
+
+            % Create ExportMenu
+            app.ExportMenu = uimenu(app.FileMenu);
+            app.ExportMenu.MenuSelectedFcn = createCallbackFcn(app, @ExportMenuSelected, true);
+            app.ExportMenu.Text = 'Export...';
+
+            % Create GridLayout
+            app.GridLayout = uigridlayout(app.UIFigure);
+            app.GridLayout.ColumnWidth = {'0.15x', '0.25x', '0.25x', '0.25x', '1x', '1x', '1x'};
+            app.GridLayout.RowHeight = {'0.6x', '0.6x', '0.6x', '1x', '1x', '1x', '1x'};
+            app.GridLayout.Padding = [0 0 0 0];
+
+            % Create GridLayout2
+            app.GridLayout2 = uigridlayout(app.GridLayout);
+            app.GridLayout2.ColumnWidth = {'0.1x', '0.1x', '0.1x', '1x'};
+            app.GridLayout2.RowHeight = {'1x', '1x', '1x'};
+            app.GridLayout2.Padding = [0 0 0 0];
+            app.GridLayout2.Layout.Row = [6 7];
+            app.GridLayout2.Layout.Column = [5 7];
+
+            % Create StartTimeSlider
+            app.StartTimeSlider = uislider(app.GridLayout2);
+            app.StartTimeSlider.Limits = [0 1];
+            app.StartTimeSlider.ValueChangedFcn = createCallbackFcn(app, @StartTimeSliderValueChanged, true);
+            app.StartTimeSlider.Layout.Row = 1;
+            app.StartTimeSlider.Layout.Column = 4;
+
+            % Create EndTimeSlider
+            app.EndTimeSlider = uislider(app.GridLayout2);
+            app.EndTimeSlider.Limits = [0 1];
+            app.EndTimeSlider.ValueChangedFcn = createCallbackFcn(app, @EndTimeSliderValueChanged, true);
+            app.EndTimeSlider.Layout.Row = 2;
+            app.EndTimeSlider.Layout.Column = 4;
+
+            % Create StartframeLabel
+            app.StartframeLabel = uilabel(app.GridLayout2);
+            app.StartframeLabel.HorizontalAlignment = 'right';
+            app.StartframeLabel.Layout.Row = 1;
+            app.StartframeLabel.Layout.Column = 1;
+            app.StartframeLabel.Text = 'Start frame';
+
+            % Create StartFrameSpinner
+            app.StartFrameSpinner = uispinner(app.GridLayout2);
+            app.StartFrameSpinner.Limits = [0 1];
+            app.StartFrameSpinner.ValueDisplayFormat = '%.0f';
+            app.StartFrameSpinner.ValueChangedFcn = createCallbackFcn(app, @StartFrameSpinnerValueChanged, true);
+            app.StartFrameSpinner.Layout.Row = 1;
+            app.StartFrameSpinner.Layout.Column = 2;
+            app.StartFrameSpinner.Value = 1;
+
+            % Create EndframeLabel
+            app.EndframeLabel = uilabel(app.GridLayout2);
+            app.EndframeLabel.HorizontalAlignment = 'right';
+            app.EndframeLabel.Layout.Row = 2;
+            app.EndframeLabel.Layout.Column = 1;
+            app.EndframeLabel.Text = 'End frame';
+
+            % Create EndFrameSpinner
+            app.EndFrameSpinner = uispinner(app.GridLayout2);
+            app.EndFrameSpinner.Limits = [0 1];
+            app.EndFrameSpinner.ValueDisplayFormat = '%.0f';
+            app.EndFrameSpinner.ValueChangedFcn = createCallbackFcn(app, @EndFrameSpinnerValueChanged, true);
+            app.EndFrameSpinner.Layout.Row = 2;
+            app.EndFrameSpinner.Layout.Column = 2;
+            app.EndFrameSpinner.Value = 1;
+
+            % Create TimesecLabel
+            app.TimesecLabel = uilabel(app.GridLayout2);
+            app.TimesecLabel.Layout.Row = 1;
+            app.TimesecLabel.Layout.Column = 3;
+            app.TimesecLabel.Text = 'Time, sec';
+
+            % Create TimesecLabel_2
+            app.TimesecLabel_2 = uilabel(app.GridLayout2);
+            app.TimesecLabel_2.Layout.Row = 2;
+            app.TimesecLabel_2.Layout.Column = 3;
+            app.TimesecLabel_2.Text = 'Time, sec';
+
+            % Create UIAxesFramePos
+            app.UIAxesFramePos = uiaxes(app.GridLayout);
+            title(app.UIAxesFramePos, 'Heatmap')
+            xlabel(app.UIAxesFramePos, 'X')
+            ylabel(app.UIAxesFramePos, 'Y')
+            app.UIAxesFramePos.Layout.Row = [1 4];
+            app.UIAxesFramePos.Layout.Column = 5;
+
+            % Create UIAxesHeatmap
+            app.UIAxesHeatmap = uiaxes(app.GridLayout);
+            title(app.UIAxesHeatmap, 'NIC heatmap')
+            xlabel(app.UIAxesHeatmap, 'X')
+            ylabel(app.UIAxesHeatmap, 'Y')
+            app.UIAxesHeatmap.Layout.Row = [1 4];
+            app.UIAxesHeatmap.Layout.Column = 7;
+
+            % Create GridLayout_heatmap_settings
+            app.GridLayout_heatmap_settings = uigridlayout(app.GridLayout);
+            app.GridLayout_heatmap_settings.ColumnWidth = {'1x', '1x', '1x'};
+            app.GridLayout_heatmap_settings.RowHeight = {'1x', '1x', '1x'};
+            app.GridLayout_heatmap_settings.Layout.Row = [4 5];
+            app.GridLayout_heatmap_settings.Layout.Column = [1 4];
+
+            % Create NICAlgorithmDropDownLabel
+            app.NICAlgorithmDropDownLabel = uilabel(app.GridLayout_heatmap_settings);
+            app.NICAlgorithmDropDownLabel.HorizontalAlignment = 'center';
+            app.NICAlgorithmDropDownLabel.Layout.Row = 1;
+            app.NICAlgorithmDropDownLabel.Layout.Column = [1 3];
+            app.NICAlgorithmDropDownLabel.Text = 'NIC Algorithm';
+
+            % Create NICAlgorithmDropDown
+            app.NICAlgorithmDropDown = uidropdown(app.GridLayout_heatmap_settings);
+            app.NICAlgorithmDropDown.Items = {'Alg1', 'ThresWarmCool', 'SignalCrossCorrMax'};
+            app.NICAlgorithmDropDown.ValueChangedFcn = createCallbackFcn(app, @NICAlgorithmDropDownValueChanged, true);
+            app.NICAlgorithmDropDown.Layout.Row = 2;
+            app.NICAlgorithmDropDown.Layout.Column = [1 3];
+            app.NICAlgorithmDropDown.Value = 'ThresWarmCool';
+
+            % Create ApplyButton_correlationAlg
+            app.ApplyButton_correlationAlg = uibutton(app.GridLayout_heatmap_settings, 'push');
+            app.ApplyButton_correlationAlg.ButtonPushedFcn = createCallbackFcn(app, @ApplyButton_correlationAlgPushed, true);
+            app.ApplyButton_correlationAlg.Layout.Row = 3;
+            app.ApplyButton_correlationAlg.Layout.Column = [1 3];
+            app.ApplyButton_correlationAlg.Text = 'Apply';
+
+            % Create GridLayout4
+            app.GridLayout4 = uigridlayout(app.GridLayout);
+            app.GridLayout4.ColumnWidth = {'1x', '1x', '1x', '1x'};
+            app.GridLayout4.Padding = [10 5 10 5];
+            app.GridLayout4.Layout.Row = [2 3];
+            app.GridLayout4.Layout.Column = [1 4];
+
+            % Create ShowneuroninfobyindexEditFieldLabel
+            app.ShowneuroninfobyindexEditFieldLabel = uilabel(app.GridLayout4);
+            app.ShowneuroninfobyindexEditFieldLabel.HorizontalAlignment = 'center';
+            app.ShowneuroninfobyindexEditFieldLabel.FontSize = 14;
+            app.ShowneuroninfobyindexEditFieldLabel.Layout.Row = 1;
+            app.ShowneuroninfobyindexEditFieldLabel.Layout.Column = [1 3];
+            app.ShowneuroninfobyindexEditFieldLabel.Text = {'Show neuron info'; 'by index'};
+
+            % Create Button_showNeuronInfo
+            app.Button_showNeuronInfo = uibutton(app.GridLayout4, 'push');
+            app.Button_showNeuronInfo.ButtonPushedFcn = createCallbackFcn(app, @Button_showNeuronInfoPushed, true);
+            app.Button_showNeuronInfo.FontSize = 14;
+            app.Button_showNeuronInfo.Layout.Row = 2;
+            app.Button_showNeuronInfo.Layout.Column = [1 4];
+            app.Button_showNeuronInfo.Text = 'Show';
+
+            % Create ShowneuroninfoIndex
+            app.ShowneuroninfoIndex = uieditfield(app.GridLayout4, 'numeric');
+            app.ShowneuroninfoIndex.Limits = [1 Inf];
+            app.ShowneuroninfoIndex.HorizontalAlignment = 'center';
+            app.ShowneuroninfoIndex.FontSize = 14;
+            app.ShowneuroninfoIndex.Layout.Row = 1;
+            app.ShowneuroninfoIndex.Layout.Column = 4;
+            app.ShowneuroninfoIndex.Value = 1;
+
+            % Create UIAxesCorrelation
+            app.UIAxesCorrelation = uiaxes(app.GridLayout);
+            title(app.UIAxesCorrelation, 'NIC')
+            xlabel(app.UIAxesCorrelation, 'X')
+            ylabel(app.UIAxesCorrelation, 'Y')
+            app.UIAxesCorrelation.Layout.Row = [1 4];
+            app.UIAxesCorrelation.Layout.Column = 6;
+
+            % Create GridLayout6
+            app.GridLayout6 = uigridlayout(app.GridLayout);
+            app.GridLayout6.ColumnWidth = {'1x', '1x', '1x', '1x'};
+            app.GridLayout6.RowHeight = {'1x'};
+            app.GridLayout6.Padding = [10 5 10 5];
+            app.GridLayout6.Layout.Row = 1;
+            app.GridLayout6.Layout.Column = [1 4];
+
+            % Create NeuronsInteractivityCoefficientNICthresholdLabel
+            app.NeuronsInteractivityCoefficientNICthresholdLabel = uilabel(app.GridLayout6);
+            app.NeuronsInteractivityCoefficientNICthresholdLabel.HorizontalAlignment = 'center';
+            app.NeuronsInteractivityCoefficientNICthresholdLabel.FontSize = 14;
+            app.NeuronsInteractivityCoefficientNICthresholdLabel.Layout.Row = 1;
+            app.NeuronsInteractivityCoefficientNICthresholdLabel.Layout.Column = [1 3];
+            app.NeuronsInteractivityCoefficientNICthresholdLabel.Text = {'Neurons Interactivity '; 'Coefficient (NIC) threshold'};
+
+            % Create NICthresholdEditField
+            app.NICthresholdEditField = uieditfield(app.GridLayout6, 'numeric');
+            app.NICthresholdEditField.ValueChangedFcn = createCallbackFcn(app, @NICthresholdEditFieldValueChanged, true);
+            app.NICthresholdEditField.HorizontalAlignment = 'center';
+            app.NICthresholdEditField.FontSize = 14;
+            app.NICthresholdEditField.Layout.Row = 1;
+            app.NICthresholdEditField.Layout.Column = 4;
+            app.NICthresholdEditField.Value = 0.9;
+
+            % Create GridLayoutThresWarmCool
+            app.GridLayoutThresWarmCool = uigridlayout(app.GridLayout);
+            app.GridLayoutThresWarmCool.ColumnWidth = {'1x', '0.5x'};
+            app.GridLayoutThresWarmCool.RowHeight = {'1x', '1x', '1x'};
+            app.GridLayoutThresWarmCool.Layout.Row = [6 7];
+            app.GridLayoutThresWarmCool.Layout.Column = [1 4];
+
+            % Create ThresholdLabel
+            app.ThresholdLabel = uilabel(app.GridLayoutThresWarmCool);
+            app.ThresholdLabel.HorizontalAlignment = 'right';
+            app.ThresholdLabel.Layout.Row = 1;
+            app.ThresholdLabel.Layout.Column = 1;
+            app.ThresholdLabel.Text = 'Threshold';
+
+            % Create EditFieldThresWarmCool_thres
+            app.EditFieldThresWarmCool_thres = uieditfield(app.GridLayoutThresWarmCool, 'numeric');
+            app.EditFieldThresWarmCool_thres.Limits = [0 1];
+            app.EditFieldThresWarmCool_thres.Layout.Row = 1;
+            app.EditFieldThresWarmCool_thres.Layout.Column = 2;
+            app.EditFieldThresWarmCool_thres.Value = 0.15;
+
+            % Create WarmupperiodsecLabel
+            app.WarmupperiodsecLabel = uilabel(app.GridLayoutThresWarmCool);
+            app.WarmupperiodsecLabel.HorizontalAlignment = 'right';
+            app.WarmupperiodsecLabel.Layout.Row = 2;
+            app.WarmupperiodsecLabel.Layout.Column = 1;
+            app.WarmupperiodsecLabel.Text = 'Warmup period, sec';
+
+            % Create EditFieldThresWarmCool_warm
+            app.EditFieldThresWarmCool_warm = uieditfield(app.GridLayoutThresWarmCool, 'numeric');
+            app.EditFieldThresWarmCool_warm.Limits = [0 10];
+            app.EditFieldThresWarmCool_warm.Layout.Row = 2;
+            app.EditFieldThresWarmCool_warm.Layout.Column = 2;
+            app.EditFieldThresWarmCool_warm.Value = 0.5;
+
+            % Create CooldownperiodsecLabel
+            app.CooldownperiodsecLabel = uilabel(app.GridLayoutThresWarmCool);
+            app.CooldownperiodsecLabel.HorizontalAlignment = 'right';
+            app.CooldownperiodsecLabel.Layout.Row = 3;
+            app.CooldownperiodsecLabel.Layout.Column = 1;
+            app.CooldownperiodsecLabel.Text = 'Cooldown period, sec';
+
+            % Create EditFieldThresWarmCool_cool
+            app.EditFieldThresWarmCool_cool = uieditfield(app.GridLayoutThresWarmCool, 'numeric');
+            app.EditFieldThresWarmCool_cool.Limits = [0 10];
+            app.EditFieldThresWarmCool_cool.Layout.Row = 3;
+            app.EditFieldThresWarmCool_cool.Layout.Column = 2;
+            app.EditFieldThresWarmCool_cool.Value = 0.5;
+
+            % Show the figure after all components are created
+            app.UIFigure.Visible = 'on';
+        end
+    end
+
+    % App creation and deletion
+    methods (Access = public)
+
+        % Construct app
+        function app = NIV
+
+            % Create UIFigure and components
+            createComponents(app)
+
+            % Register the app with App Designer
+            registerApp(app, app.UIFigure)
+
+            % Execute the startup function
+            runStartupFcn(app, @startupFcn)
+
+            if nargout == 0
+                clear app
+            end
+        end
+
+        % Code that executes before app deletion
+        function delete(app)
+
+            % Delete UIFigure when app is deleted
+            delete(app.UIFigure)
+        end
+    end
+end
