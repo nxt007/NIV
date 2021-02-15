@@ -42,7 +42,6 @@ subplot(321); cla;
     subplot(3,2,3:4);cla;
     
     plot(t, data.c_raw(:,ind(m)), 'linewidth', 2); hold on;
-%     plot(t, data.spike(:,ind(m)), 'r');
     title('Fluorescence Trace');
     xlim([t(1), t(end)]);
     xlabel(str_xlabel);
@@ -58,7 +57,6 @@ subplot(321); cla;
     if isfield(data,'c_raw2')
         plot(t, data.c_raw2(:,ind(m)), 'r','linewidth', 1);
     end
-       plot(t, ms.FiltTraces(:,ind(m))*max(ms.A(:, ind(m))), 'r');
         
     title('Spike Activity');
     xlim([t(1), t(end)]);

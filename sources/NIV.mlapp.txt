@@ -360,9 +360,9 @@ classdef NIV < matlab.apps.AppBase
             selpath = uigetdir('.\', 'Select folder for data to export...');
             
             % exporting images
-            app.saveFig(app.UIAxesFramePos, [selpath '\framePos']);
-            app.saveFig(app.UIAxesHeatmap, [selpath '\heatmap']);
-            app.saveFig(app.UIAxesCorrelation, [selpath '\correlation']);
+            app.saveFig(app.UIAxesFramePos, [selpath '\heatmap']);
+            app.saveFig(app.UIAxesHeatmap, [selpath '\nic_heatmap']);
+            app.saveFig(app.UIAxesCorrelation, [selpath '\nic_coeff']);
             
             
             
