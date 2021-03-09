@@ -1,0 +1,9 @@
+version; 1.1
+file_c_raw; video_20210204T152303_c_raw.csv
+file_spike; video_20210204T152303_spike.csv
+file_bg_image; video_20210204T152303_bg_image.csv
+file_A; video_20210204T152303_A.csv
+file_centers; video_20210204T152303_centers.csv
+image_width;128
+image_height;128
+Fs;10

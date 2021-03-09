@@ -35,5 +35,7 @@ Use `File->Import csv...` to open main `_meta.csv` file.
 ## Examples
 Example data can be found in `test_data` folder.
 
+Example of output (exported) data can be found in `test_output` folder.
+
 ## License
 This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.

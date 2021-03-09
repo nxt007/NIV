@@ -1,0 +1,7 @@
+Corr alg: ThresWarmCool
+Corr threshold: 0.900000
+Frames range start: 1
+Frames range end: 321
+ThresWarmCool: threshold: 0.150000
+ThresWarmCool: warm_up: 5.000000 (video frames)
+ThresWarmCool: cool_down: 5.000000 (video frames)
